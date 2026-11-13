@@ -1,0 +1,52 @@
+{
+    "name": "php-io-extensions/plutovg",
+    "type": "php-ext",
+    "description": "1:1 PHP bindings of PlutoVG 1.3.3, a small C 2D vector graphics library (paths, fills, strokes, gradients, text), compiled into the extension",
+    "keywords": [
+        "plutovg",
+        "vector-graphics",
+        "rasterizer",
+        "2d",
+        "php-ext"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Project Saturn Studios, LLC",
+            "email": "info@projectsaturnstudios.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.4"
+    },
+    "require-dev": {
+        "pestphp/pest": "^4.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "0.11.x-dev"
+        }
+    },
+    "php-ext": {
+        "extension-name": "plutovg",
+        "priority": 30,
+        "support-zts": true,
+        "support-nts": true,
+        "os-families": [
+            "linux",
+            "darwin"
+        ],
+        "configure-options": [
+            {
+                "name": "enable-plutovg",
+                "description": "Enable the PlutoVG 1.3.3 bindings",
+                "needs-value": false
+            }
+        ]
+    }
+}

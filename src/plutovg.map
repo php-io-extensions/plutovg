@@ -1,0 +1,6 @@
+/* ext-plutovg exports its module entry only: PlutoVG stay local,
+   so another PlutoVG copy loaded by another extension can never take over the binding's calls. */
+{
+  global: get_module;
+  local: *;
+};

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: PHP ${{ matrix.php }} ${{ matrix.ts }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+        php: ['8.4', '8.5']
+        ts: [nts, zts]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer
+        env:
+          phpts: ${{ matrix.ts == 'zts' && 'ts' || 'nts' }}
+
+      - name: Build
+        # PlutoVG 1.3.3 is vendored under lib/plutovg/ and compiled into the module.
+        run: |
+          phpize
+          ./configure --enable-plutovg
+          make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
+
+      - name: Load
+        run: |
+          php -n -d extension="$PWD/modules/plutovg.so" -r 'exit(extension_loaded("plutovg") ? 0 : 1);'
+          php -n -d extension="$PWD/modules/plutovg.so" --ri plutovg
+
+      - name: Test
+        run: |
+          composer install --no-interaction --no-progress
+          mkdir -p "$RUNNER_TEMP/php-ini"
+          echo "extension=$PWD/modules/plutovg.so" > "$RUNNER_TEMP/php-ini/plutovg.ini"
+          PHP_INI_SCAN_DIR=":$RUNNER_TEMP/php-ini" php -d memory_limit=128M vendor/bin/pest --ci
