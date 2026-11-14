@@ -6,7 +6,8 @@
  * signal (segfault, SIGFPE, abort) or a hang is a failure. Run after any change
  * to argument checks:  php -d memory_limit=256M tools/sweep.php
  *
- * Skipped: plutovg_surface_create_for_address, whose caller vouches for the address.
+ * Skipped: plutovg_surface_create_for_address and plutovg_surface_blend_colour/_ramp, whose caller
+ * vouches for the address.
  * Children run in a scratch directory: the file-writing functions get junk names.
  */
 
@@ -119,7 +120,7 @@ function sweep_struct(string $class, int $v): object
 }
 
 $fails = [];
-$functions = array_values(array_diff(get_extension_funcs('plutovg'), ['plutovg_surface_create_for_address']));
+$functions = array_values(array_diff(get_extension_funcs('plutovg'), ['plutovg_surface_create_for_address', 'plutovg_surface_blend_colour', 'plutovg_surface_blend_ramp']));
 $cwd = sys_get_temp_dir() . '/plutovg-sweep-' . getmypid();
 @mkdir($cwd);
 sort($functions);

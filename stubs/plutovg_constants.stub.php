@@ -260,3 +260,34 @@ const PLUTOVG_LINE_JOIN_ROUND = UNKNOWN;
  */
 const PLUTOVG_LINE_JOIN_BEVEL = UNKNOWN;
 
+/**
+ * Binding addition: straight 32-bit memory with bytes red, green, blue, alpha (plutovg_surface_blend_colour/ramp).
+ *
+ * @var int
+ * @cvalue PV_MEMORY_RGBA
+ */
+const PLUTOVG_MEMORY_RGBA = UNKNOWN;
+
+/**
+ * Binding addition: straight 32-bit memory with bytes blue, green, red, alpha (plutovg_surface_blend_colour/ramp).
+ *
+ * @var int
+ * @cvalue PV_MEMORY_BGRA
+ */
+const PLUTOVG_MEMORY_BGRA = UNKNOWN;
+
+/**
+ * Binding addition: straight 32-bit memory with bytes alpha, red, green, blue (plutovg_surface_blend_colour/ramp).
+ *
+ * @var int
+ * @cvalue PV_MEMORY_ARGB
+ */
+const PLUTOVG_MEMORY_ARGB = UNKNOWN;
+
+/**
+ * Binding addition: straight 32-bit memory with bytes alpha, blue, green, red (plutovg_surface_blend_colour/ramp).
+ *
+ * @var int
+ * @cvalue PV_MEMORY_ABGR
+ */
+const PLUTOVG_MEMORY_ABGR = UNKNOWN;

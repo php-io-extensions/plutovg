@@ -6,6 +6,12 @@
 #ifndef PV_RUNTIME_H
 #define PV_RUNTIME_H
 
+/* Byte orders of the straight 32-bit memory plutovg_surface_blend_colour/ramp write (binding addition). */
+#define PV_MEMORY_RGBA 0
+#define PV_MEMORY_BGRA 1
+#define PV_MEMORY_ARGB 2
+#define PV_MEMORY_ABGR 3
+
 #include "php.h"
 #include "plutovg.h"
 

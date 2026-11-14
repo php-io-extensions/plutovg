@@ -11,6 +11,8 @@
 #include "zend_exceptions.h"
 #include "main/php_open_temporary_file.h"
 #include "main/fopen_wrappers.h"
+#include <limits.h>
+#include <math.h>
 #include "runtime.h"
 #include "../stubs/plutovg_surface_arginfo.h"
 
@@ -399,6 +401,222 @@ ZEND_FUNCTION(plutovg_surface_get_alpha)
 	}
 	ZSTR_VAL(alpha)[ZSTR_LEN(alpha)] = '\0';
 	RETURN_NEW_STR(alpha);
+}
+
+/*
+ * Binding addition: VelvetGE's blend into straight 32-bit memory (plutovg_surface_blend_colour and
+ * _ramp). PlutoVG supplies coverage only, as the alpha of a surface filled in opaque white; the
+ * colour and its arithmetic are VelvetGE's (PHPLandPixelStore::blend()), so a brush built on these
+ * differs from VelvetGE by PlutoVG's edge coverage alone.
+ */
+
+/* Byte offsets of red, green, blue, alpha in a pixel, by PV_MEMORY_*. */
+static const unsigned char pv_memory_offsets[4][4] = {
+	{0, 1, 2, 3},    /* RGBA */
+	{2, 1, 0, 3},    /* BGRA */
+	{1, 2, 3, 0},    /* ARGB */
+	{3, 2, 1, 0},    /* ABGR */
+};
+
+/* Checks the memory description shared by both calls; the address itself is trusted. */
+static bool pv_memory_args(zend_long address, zend_long width, zend_long height, zend_long stride, zend_long order, uint32_t first)
+{
+	if (address == 0) {
+		zend_argument_value_error(first, "must be a non-zero address");
+		return false;
+	}
+	if (width <= 0 || width > INT_MAX / 4) {
+		zend_argument_value_error(first + 1, "must be between 1 and %d", INT_MAX / 4);
+		return false;
+	}
+	if (height <= 0 || height > INT_MAX) {
+		zend_argument_value_error(first + 2, "must be between 1 and %d", INT_MAX);
+		return false;
+	}
+	if (stride < width * 4) {
+		zend_argument_value_error(first + 3, "must be at least width * 4");
+		return false;
+	}
+	if (order < PV_MEMORY_RGBA || order > PV_MEMORY_ABGR) {
+		zend_argument_value_error(first + 4, "must be one of the PLUTOVG_MEMORY_* constants");
+		return false;
+	}
+	return true;
+}
+
+/* One pixel, VelvetGE's source-over at alpha a (1..255) of a straight colour. */
+static inline void pv_memory_blend(unsigned char *px, const unsigned char *o, unsigned r, unsigned g, unsigned b, unsigned a)
+{
+	if (a == 255) {
+		px[o[0]] = (unsigned char) r, px[o[1]] = (unsigned char) g, px[o[2]] = (unsigned char) b, px[o[3]] = 255;
+		return;
+	}
+	unsigned keep = 255 - a;
+	px[o[0]] = (unsigned char) ((r * a + px[o[0]] * keep + 127) / 255);
+	px[o[1]] = (unsigned char) ((g * a + px[o[1]] * keep + 127) / 255);
+	px[o[2]] = (unsigned char) ((b * a + px[o[2]] * keep + 127) / 255);
+	px[o[3]] = (unsigned char) ((255 * a + px[o[3]] * keep + 127) / 255);
+}
+
+/* [x, y, width, height] of the box, or null when nothing had coverage. */
+static void pv_memory_box(zval *rv, zend_long x0, zend_long y0, zend_long x1, zend_long y1)
+{
+	if (x1 < x0) {
+		ZVAL_NULL(rv);
+		return;
+	}
+	array_init_size(rv, 4);
+	add_next_index_long(rv, x0);
+	add_next_index_long(rv, y0);
+	add_next_index_long(rv, x1 - x0 + 1);
+	add_next_index_long(rv, y1 - y0 + 1);
+}
+
+ZEND_FUNCTION(plutovg_surface_blend_colour)
+{
+	zval *zs;
+	zend_long address, width, height, stride, order, x, y, rgba;
+	ZEND_PARSE_PARAMETERS_START(9, 9)
+		Z_PARAM_OBJECT_OF_CLASS(zs, pv_surface_ce)
+		Z_PARAM_LONG(address)
+		Z_PARAM_LONG(width)
+		Z_PARAM_LONG(height)
+		Z_PARAM_LONG(stride)
+		Z_PARAM_LONG(order)
+		Z_PARAM_LONG(x)
+		Z_PARAM_LONG(y)
+		Z_PARAM_LONG(rgba)
+	ZEND_PARSE_PARAMETERS_END();
+	SURFACE_ARG(zs, 1, surface);
+	if (!pv_memory_args(address, width, height, stride, order, 2)) {
+		RETURN_THROWS();
+	}
+
+	unsigned r = (unsigned) ((rgba >> 24) & 0xFF), g = (unsigned) ((rgba >> 16) & 0xFF), b = (unsigned) ((rgba >> 8) & 0xFF), alpha = (unsigned) (rgba & 0xFF);
+	const unsigned char *o = pv_memory_offsets[order];
+	int sw = plutovg_surface_get_width(surface), sh = plutovg_surface_get_height(surface), sstride = plutovg_surface_get_stride(surface);
+	const unsigned char *data = plutovg_surface_get_data(surface);
+	zend_long bx0 = width, by0 = height, bx1 = -1, by1 = -1;
+
+	for (int j = 0; j < sh; j++) {
+		zend_long my = y + j;
+		if (my < 0 || my >= height) {
+			continue;
+		}
+		const uint32_t *row = (const uint32_t *) (data + (size_t) j * (size_t) sstride);
+		unsigned char *line = (unsigned char *) (uintptr_t) address + (size_t) my * (size_t) stride;
+		for (int i = 0; i < sw; i++) {
+			zend_long mx = x + i;
+			unsigned c = row[i] >> 24;
+			if (c == 0 || mx < 0 || mx >= width) {
+				continue;
+			}
+			bx0 = mx < bx0 ? mx : bx0, bx1 = mx > bx1 ? mx : bx1, by0 = my < by0 ? my : by0, by1 = my > by1 ? my : by1;
+			unsigned a = (alpha * c + 127) / 255;
+			if (a != 0) {
+				pv_memory_blend(line + (size_t) mx * 4, o, r, g, b, a);
+			}
+		}
+	}
+	pv_memory_box(return_value, bx0, by0, bx1, by1);
+}
+
+ZEND_FUNCTION(plutovg_surface_blend_ramp)
+{
+	zval *zs;
+	zend_long address, width, height, stride, order, x, y, spread;
+	zend_string *ramp;
+	bool radial;
+	HashTable *inverse;
+	ZEND_PARSE_PARAMETERS_START(12, 12)
+		Z_PARAM_OBJECT_OF_CLASS(zs, pv_surface_ce)
+		Z_PARAM_LONG(address)
+		Z_PARAM_LONG(width)
+		Z_PARAM_LONG(height)
+		Z_PARAM_LONG(stride)
+		Z_PARAM_LONG(order)
+		Z_PARAM_LONG(x)
+		Z_PARAM_LONG(y)
+		Z_PARAM_STR(ramp)
+		Z_PARAM_BOOL(radial)
+		Z_PARAM_LONG(spread)
+		Z_PARAM_ARRAY_HT(inverse)
+	ZEND_PARSE_PARAMETERS_END();
+	SURFACE_ARG(zs, 1, surface);
+	if (!pv_memory_args(address, width, height, stride, order, 2)) {
+		RETURN_THROWS();
+	}
+	if (ZSTR_LEN(ramp) != 1024) {
+		zend_argument_value_error(9, "must be 256 RGBA8 colours (1024 bytes)");
+		RETURN_THROWS();
+	}
+	if (spread != PLUTOVG_SPREAD_METHOD_PAD && spread != PLUTOVG_SPREAD_METHOD_REFLECT && spread != PLUTOVG_SPREAD_METHOD_REPEAT) {
+		zend_argument_value_error(11, "must be one of the PLUTOVG_SPREAD_METHOD_* constants");
+		RETURN_THROWS();
+	}
+	double m[6];
+	int n = 0;
+	zval *v;
+	if (zend_hash_num_elements(inverse) != 6) {
+		zend_argument_value_error(12, "must hold six finite numbers");
+		RETURN_THROWS();
+	}
+	ZEND_HASH_FOREACH_VAL(inverse, v) {
+		ZVAL_DEREF(v);
+		if (Z_TYPE_P(v) == IS_LONG) {
+			m[n++] = (double) Z_LVAL_P(v);
+		} else if (Z_TYPE_P(v) == IS_DOUBLE && isfinite(Z_DVAL_P(v))) {
+			m[n++] = Z_DVAL_P(v);
+		} else {
+			zend_argument_value_error(12, "must hold six finite numbers");
+			RETURN_THROWS();
+		}
+	} ZEND_HASH_FOREACH_END();
+
+	const unsigned char *colours = (const unsigned char *) ZSTR_VAL(ramp);
+	const unsigned char *o = pv_memory_offsets[order];
+	int sw = plutovg_surface_get_width(surface), sh = plutovg_surface_get_height(surface), sstride = plutovg_surface_get_stride(surface);
+	const unsigned char *data = plutovg_surface_get_data(surface);
+	zend_long bx0 = width, by0 = height, bx1 = -1, by1 = -1;
+
+	for (int j = 0; j < sh; j++) {
+		zend_long my = y + j;
+		if (my < 0 || my >= height) {
+			continue;
+		}
+		const uint32_t *row = (const uint32_t *) (data + (size_t) j * (size_t) sstride);
+		unsigned char *line = (unsigned char *) (uintptr_t) address + (size_t) my * (size_t) stride;
+		double py = (double) my + 0.5;
+		for (int i = 0; i < sw; i++) {
+			zend_long mx = x + i;
+			unsigned c = row[i] >> 24;
+			if (c == 0 || mx < 0 || mx >= width) {
+				continue;
+			}
+			bx0 = mx < bx0 ? mx : bx0, bx1 = mx > bx1 ? mx : bx1, by0 = my < by0 ? my : by0, by1 = my > by1 ? my : by1;
+
+			/* As PHPLandPixelStore::paintGradient(): the pixel centre into gradient space, folded, rounded. */
+			double px = (double) mx + 0.5;
+			double u = m[0] * px + m[2] * py + m[4], w = m[1] * px + m[3] * py + m[5];
+			double t = radial ? hypot(u, w) : u;
+			if (spread == PLUTOVG_SPREAD_METHOD_PAD) {
+				t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+			} else if (spread == PLUTOVG_SPREAD_METHOD_REPEAT) {
+				t = t - floor(t);
+			} else {
+				double k = t - 2.0 * floor(t / 2.0);
+				t = k > 1.0 ? 2.0 - k : k;
+			}
+			long at = (long) floor(t * 255.0 + 0.5);
+			at = at < 0 ? 0 : (at > 255 ? 255 : at);
+			const unsigned char *e = colours + at * 4;
+			unsigned a = c == 255 ? e[3] : (e[3] * c + 127) / 255;
+			if (a != 0) {
+				pv_memory_blend(line + (size_t) mx * 4, o, e[0], e[1], e[2], a);
+			}
+		}
+	}
+	pv_memory_box(return_value, bx0, by0, bx1, by1);
 }
 
 ZEND_FUNCTION(plutovg_surface_get_width)

@@ -66,6 +66,31 @@ function plutovg_surface_get_data_address(plutovg_surface $surface): int {}
  */
 function plutovg_surface_get_alpha(plutovg_surface $surface): string {}
 
+/**
+ * Binding addition: blends $rgba (0xRRGGBBAA, straight) into straight 32-bit memory through the
+ * alpha of $coverage, placed with its top-left at ($x, $y) in the memory. Per pixel, with c the
+ * coverage: a = (alpha * c + 127) / 255; nothing at a = 0, the colour itself (opaque) at a = 255,
+ * else each byte (colour * a + pixel * (255 - a) + 127) / 255, alpha (255 * a + pixelAlpha *
+ * (255 - a) + 127) / 255: VelvetGE's arithmetic. Pixels outside the memory are skipped.
+ *
+ * $address is trusted to hold $height rows of $stride bytes for as long as the call runs.
+ * Returns [x, y, width, height] around the memory pixels with coverage, or null when none had.
+ *
+ * @return array{int, int, int, int}|null
+ */
+function plutovg_surface_blend_colour(plutovg_surface $coverage, int $address, int $width, int $height, int $stride, int $order, int $x, int $y, int $rgba): ?array {}
+
+/**
+ * Binding addition: as plutovg_surface_blend_colour(), the colour of each pixel sampled from a
+ * 256-colour RGBA8 $ramp (1024 bytes). The pixel centre (px + 0.5, py + 0.5) maps through
+ * $inverse [a, b, c, d, e, f] to u = a·x + c·y + e, v = b·x + d·y + f; t is u, or hypot(u, v) when
+ * $radial; $spread (PLUTOVG_SPREAD_METHOD_*) folds t into 0..1; the entry is round(t · 255). Its
+ * alpha times the coverage is the a above.
+ *
+ * @return array{int, int, int, int}|null
+ */
+function plutovg_surface_blend_ramp(plutovg_surface $coverage, int $address, int $width, int $height, int $stride, int $order, int $x, int $y, string $ramp, bool $radial, int $spread, array $inverse): ?array {}
+
 function plutovg_surface_get_width(plutovg_surface $surface): int {}
 
 function plutovg_surface_get_height(plutovg_surface $surface): int {}

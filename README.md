@@ -104,7 +104,7 @@ PlutoVG commit => bbd91f0d06a71491691b36330f29dffa4af87ccf
 
 ## API
 
-All 212 of PlutoVG's public functions, under their C names, plus three additions. The full rules are in the [design spec](docs/superpowers/specs/2026-11-13-plutovg-design.md).
+All 212 of PlutoVG's public functions, under their C names, plus five additions. The full rules are in the [design spec](docs/superpowers/specs/2026-11-13-plutovg-design.md).
 
 ### Translations
 
@@ -116,7 +116,7 @@ All 212 of PlutoVG's public functions, under their C names, plus three additions
 - **Pixels cross as strings.** `plutovg_surface_get_data()` returns a copy. `plutovg_surface_create_for_data()` draws into its own copy of your string, which every canvas, texture and reference built on the surface keeps alive. `plutovg_convert_*` write their result to a reference.
 - **Lengths:** a `-1` length means the whole string (for text: up to the first zero unit inside it).
 - **Callbacks:** `destroy_func`/`closure` pairs are the binding's own (font data is copied and freed with the face); traversal and image-writer functions take a PHP callable in place of the function/closure pair.
-- **Additions:** `plutovg_surface_get_alpha()` returns a surface's alpha plane as packed bytes (for a white fill, its a8 coverage), `plutovg_surface_get_data_address()` returns the address of a surface's pixels, and `plutovg_surface_create_for_address()` makes a surface over memory another extension owns (a pixman image's bits, for example), keeping the owner object you pass alive.
+- **Additions:** `plutovg_surface_get_alpha()` returns a surface's alpha plane as packed bytes (for a white fill, its a8 coverage), `plutovg_surface_get_data_address()` returns the address of a surface's pixels, and `plutovg_surface_create_for_address()` makes a surface over memory another extension owns (a pixman image's bits, for example), keeping the owner object you pass alive. `plutovg_surface_blend_colour()` and `plutovg_surface_blend_ramp()` blend a surface's alpha, as coverage, with a straight colour or a 256-entry ramp into straight 32-bit memory in one of four byte orders (`PLUTOVG_MEMORY_RGBA`, `_BGRA`, `_ARGB`, `_ABGR`), with VelvetGE's arithmetic; they return the touched box. The address is trusted, like `create_for_address()`'s.
 
 ### Callbacks
 
