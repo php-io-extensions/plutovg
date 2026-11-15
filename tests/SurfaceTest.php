@@ -21,7 +21,7 @@ it('creates surfaces within PlutoVG limits and reads pixels back', function (): 
     expect(plutovg_surface_get_width($s))->toBe(4)
         ->and(plutovg_surface_get_height($s))->toBe(3)
         ->and(plutovg_surface_get_stride($s))->toBe(16)
-        ->and(plutovg_surface_get_data_address($s))->not->toBe(0)
+        ->and(plutovg_surface_get_data($s))->not->toBe(0)
         ->and(plutovg_surface_create(0, 1))->toBeNull()
         ->and(plutovg_surface_create(1 << 15, 1))->toBeNull();
 
@@ -52,7 +52,7 @@ it('refuses create_for_data geometry the string cannot hold', function (int $w, 
 
 it('draws into memory it is pointed at, keeping the owner alive', function (): void {
     $owner = plutovg_surface_create(8, 8);
-    $s = plutovg_surface_create_for_address(plutovg_surface_get_data_address($owner), 8, 8, 32, $owner);
+    $s = plutovg_surface_create_for_address(plutovg_surface_get_data($owner), 8, 8, 32, $owner);
     $c = plutovg_canvas_create($s);
     plutovg_canvas_set_rgb($c, 0, 0, 1);
     plutovg_canvas_paint($c);
@@ -121,4 +121,42 @@ it('reads the alpha plane packed, one byte a pixel (binding addition)', function
     $s = plutovg_surface_create_for_data(pack('V*', 0x80FFFFFF, 0x00000000, 0xFF000000, 0x40102030, 0, 0), 2, 2, 12);
     expect(bin2hex(plutovg_surface_get_alpha($s)))->toBe('80004000') // row 1 starts at the stride, skipping the third word
         ->and(fn () => plutovg_surface_get_alpha(tap(plutovg_surface_create(1, 1), fn ($x) => plutovg_surface_destroy($x))))->toThrow(ValueError::class);
+});
+
+it('returns the pixel address instead of a copy when asked not to copy', function () {
+    $s = plutovg_surface_create(4, 2);
+    $address = plutovg_surface_get_data($s);
+
+    expect($address)->toBeInt()->not->toBe(0)
+        ->and(plutovg_surface_get_data($s))->toBe($address)
+        ->and(plutovg_surface_get_data($s, true))->toBeString()->toHaveLength(32);
+
+    // the address is the surface's own memory: a surface over it draws into the first one
+    $over = plutovg_surface_create_for_address($address, 4, 2, 16, $s);
+    $canvas = plutovg_canvas_create($over);
+    plutovg_canvas_set_rgba($canvas, 0.0, 0.0, 1.0, 1.0);
+    plutovg_canvas_fill_rect($canvas, 0, 0, 4, 2);
+    expect(substr(plutovg_surface_get_data($s, true), 0, 4))->toBe("\xFF\x00\x00\xFF");
+});
+
+it('converts between addresses in place, with no string', function () {
+    $s = plutovg_surface_create(2, 1);
+    $addr = plutovg_surface_get_data($s);
+    $rgba = "\xff\x00\x00\x80\x00\x00\xff\xff";
+    plutovg_convert_rgba_to_argb($addr, $rgba, 2, 1, 8);   // into the surface, in C
+    $words = array_values(unpack('V*', plutovg_surface_get_data($s, copy: true)));
+    expect($words)->toBe([0x80800000, 0xff0000ff]);
+    plutovg_convert_argb_to_rgba($out, $addr, 2, 1, 8);     // address in, string out
+    expect(bin2hex($out))->toBe('ff000080' . '0000ffff');
+    $zero = 0;
+    expect(fn () => plutovg_convert_rgba_to_argb($zero, $rgba, 2, 1, 8))->toThrow(ValueError::class);
+});
+
+it('puts an A8 mask into a surface as black at each alpha, the inverse of get_alpha', function () {
+    $s = plutovg_surface_create(3, 2);
+    $a8 = "\x00\x40\x80\xc0\xff\x01";
+    plutovg_surface_put_alpha($s, $a8);
+    expect(plutovg_surface_get_alpha($s))->toBe($a8)
+        ->and(array_values(unpack('V*', plutovg_surface_get_data($s, copy: true))))->toBe([0, 0x40000000, 0x80000000, 0xc0000000, 0xff000000, 0x01000000]);
+    expect(fn () => plutovg_surface_put_alpha($s, "\0"))->toThrow(ValueError::class);
 });

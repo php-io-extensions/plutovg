@@ -54,17 +54,22 @@ function plutovg_surface_destroy(plutovg_surface $surface): void {}
 
 function plutovg_surface_get_reference_count(plutovg_surface $surface): int {}
 
-/** A copy of the pixels: stride * height bytes of premultiplied ARGB32 in native byte order. */
-function plutovg_surface_get_data(plutovg_surface $surface): string {}
-
-/** Binding addition: the address of the surface's pixels. */
-function plutovg_surface_get_data_address(plutovg_surface $surface): int {}
+/**
+ * The surface's pixels: stride * height bytes of premultiplied ARGB32 in native byte order.
+ * By default what C returns: the address of the pixels, as an int, and nothing is copied (hand it
+ * to plutovg_surface_create_for_address() or another extension's memory wrapper; valid while the
+ * surface lives). With $copy, a copy as a string.
+ */
+function plutovg_surface_get_data(plutovg_surface $surface, bool $copy = false): int|string {}
 
 /**
  * Binding addition: the alpha byte of every pixel, width * height bytes, rows packed (no stride
  * padding), top row first. For a surface filled in opaque white this is the fill's a8 coverage.
  */
 function plutovg_surface_get_alpha(plutovg_surface $surface): string {}
+
+/** Binding addition, the inverse of get_alpha: each byte c of $alpha (width * height) becomes the pixel 0xCC000000, black at alpha c. */
+function plutovg_surface_put_alpha(plutovg_surface $surface, string $alpha): void {}
 
 /**
  * Binding addition: blends $rgba (0xRRGGBBAA, straight) into straight 32-bit memory through the
@@ -108,10 +113,13 @@ function plutovg_surface_write_to_png_stream(plutovg_surface $surface, callable 
 
 function plutovg_surface_write_to_jpg_stream(plutovg_surface $surface, callable $write_func, int $quality): bool {}
 
-/** $dst becomes the converted copy of $src (same length). */
-function plutovg_convert_argb_to_rgba(?string &$dst, string $src, int $width, int $height, int $stride): void {}
+/**
+ * $src is a string or a trusted address. If $dst holds a trusted address, the result is written
+ * there in C (it may equal $src); otherwise $dst becomes a new string, the converted copy.
+ */
+function plutovg_convert_argb_to_rgba(string|int|null &$dst, string|int $src, int $width, int $height, int $stride): void {}
 
-function plutovg_convert_rgba_to_argb(?string &$dst, string $src, int $width, int $height, int $stride): void {}
+function plutovg_convert_rgba_to_argb(string|int|null &$dst, string|int $src, int $width, int $height, int $stride): void {}
 
 function plutovg_paint_create_rgb(float $r, float $g, float $b): plutovg_paint {}
 

@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 24bc12b591b53650b8911774124e8e225a722fff */
+ * Stub hash: f084c4d89944f58d38da099cfdc53a26001926a4 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_color_init_rgb, 0, 4, IS_VOID, 0)
 	ZEND_ARG_OBJ_INFO(0, color, plutovg_color, 0)
@@ -108,13 +108,19 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_surface_get_reference_co
 	ZEND_ARG_OBJ_INFO(0, surface, plutovg_surface, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_surface_get_data, 0, 1, IS_STRING, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_MASK_EX(arginfo_plutovg_surface_get_data, 0, 1, MAY_BE_LONG|MAY_BE_STRING)
+	ZEND_ARG_OBJ_INFO(0, surface, plutovg_surface, 0)
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, copy, _IS_BOOL, 0, "false")
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_surface_get_alpha, 0, 1, IS_STRING, 0)
 	ZEND_ARG_OBJ_INFO(0, surface, plutovg_surface, 0)
 ZEND_END_ARG_INFO()
 
-#define arginfo_plutovg_surface_get_data_address arginfo_plutovg_surface_get_reference_count
-
-#define arginfo_plutovg_surface_get_alpha arginfo_plutovg_surface_get_data
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_surface_put_alpha, 0, 2, IS_VOID, 0)
+	ZEND_ARG_OBJ_INFO(0, surface, plutovg_surface, 0)
+	ZEND_ARG_TYPE_INFO(0, alpha, IS_STRING, 0)
+ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_surface_blend_colour, 0, 9, IS_ARRAY, 1)
 	ZEND_ARG_OBJ_INFO(0, coverage, plutovg_surface, 0)
@@ -177,8 +183,8 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_surface_write_to_jpg_str
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_convert_argb_to_rgba, 0, 5, IS_VOID, 0)
-	ZEND_ARG_TYPE_INFO(1, dst, IS_STRING, 1)
-	ZEND_ARG_TYPE_INFO(0, src, IS_STRING, 0)
+	ZEND_ARG_TYPE_MASK(1, dst, MAY_BE_STRING|MAY_BE_LONG|MAY_BE_NULL, NULL)
+	ZEND_ARG_TYPE_MASK(0, src, MAY_BE_STRING|MAY_BE_LONG, NULL)
 	ZEND_ARG_TYPE_INFO(0, width, IS_LONG, 0)
 	ZEND_ARG_TYPE_INFO(0, height, IS_LONG, 0)
 	ZEND_ARG_TYPE_INFO(0, stride, IS_LONG, 0)
@@ -267,8 +273,8 @@ ZEND_FUNCTION(plutovg_surface_reference);
 ZEND_FUNCTION(plutovg_surface_destroy);
 ZEND_FUNCTION(plutovg_surface_get_reference_count);
 ZEND_FUNCTION(plutovg_surface_get_data);
-ZEND_FUNCTION(plutovg_surface_get_data_address);
 ZEND_FUNCTION(plutovg_surface_get_alpha);
+ZEND_FUNCTION(plutovg_surface_put_alpha);
 ZEND_FUNCTION(plutovg_surface_blend_colour);
 ZEND_FUNCTION(plutovg_surface_blend_ramp);
 ZEND_FUNCTION(plutovg_surface_get_width);
@@ -313,8 +319,8 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE(plutovg_surface_destroy, arginfo_plutovg_surface_destroy)
 	ZEND_FE(plutovg_surface_get_reference_count, arginfo_plutovg_surface_get_reference_count)
 	ZEND_FE(plutovg_surface_get_data, arginfo_plutovg_surface_get_data)
-	ZEND_FE(plutovg_surface_get_data_address, arginfo_plutovg_surface_get_data_address)
 	ZEND_FE(plutovg_surface_get_alpha, arginfo_plutovg_surface_get_alpha)
+	ZEND_FE(plutovg_surface_put_alpha, arginfo_plutovg_surface_put_alpha)
 	ZEND_FE(plutovg_surface_blend_colour, arginfo_plutovg_surface_blend_colour)
 	ZEND_FE(plutovg_surface_blend_ramp, arginfo_plutovg_surface_blend_ramp)
 	ZEND_FE(plutovg_surface_get_width, arginfo_plutovg_surface_get_width)

@@ -363,22 +363,19 @@ ZEND_FUNCTION(plutovg_surface_get_reference_count)
 ZEND_FUNCTION(plutovg_surface_get_data)
 {
 	zval *zs;
-	ZEND_PARSE_PARAMETERS_START(1, 1)
+	bool copy = false;
+	ZEND_PARSE_PARAMETERS_START(1, 2)
 		Z_PARAM_OBJECT_OF_CLASS(zs, pv_surface_ce)
+		Z_PARAM_OPTIONAL
+		Z_PARAM_BOOL(copy)
 	ZEND_PARSE_PARAMETERS_END();
 	SURFACE_ARG(zs, 1, surface);
+	/* What C returns is the pointer: by default that is what PHP gets, and nothing is copied. */
+	if (!copy) {
+		RETURN_LONG((zend_long) (uintptr_t) plutovg_surface_get_data(surface));
+	}
 	size_t size = (size_t) plutovg_surface_get_stride(surface) * (size_t) plutovg_surface_get_height(surface);
 	RETURN_STRINGL((const char *) plutovg_surface_get_data(surface), size);
-}
-
-ZEND_FUNCTION(plutovg_surface_get_data_address)
-{
-	zval *zs;
-	ZEND_PARSE_PARAMETERS_START(1, 1)
-		Z_PARAM_OBJECT_OF_CLASS(zs, pv_surface_ce)
-	ZEND_PARSE_PARAMETERS_END();
-	SURFACE_ARG(zs, 1, surface);
-	RETURN_LONG((zend_long) (uintptr_t) plutovg_surface_get_data(surface));
 }
 
 ZEND_FUNCTION(plutovg_surface_get_alpha)
@@ -401,6 +398,35 @@ ZEND_FUNCTION(plutovg_surface_get_alpha)
 	}
 	ZSTR_VAL(alpha)[ZSTR_LEN(alpha)] = '\0';
 	RETURN_NEW_STR(alpha);
+}
+
+/*
+ * Binding addition, the inverse of plutovg_surface_get_alpha(): one coverage byte per pixel written
+ * as the word 0xCC000000 (black at alpha c, a valid premultiplied pixel), so an A8 mask becomes a
+ * PlutoVG texture in C rather than by widening every byte in PHP.
+ */
+ZEND_FUNCTION(plutovg_surface_put_alpha)
+{
+	zval *zs;
+	zend_string *alpha;
+	ZEND_PARSE_PARAMETERS_START(2, 2)
+		Z_PARAM_OBJECT_OF_CLASS(zs, pv_surface_ce)
+		Z_PARAM_STR(alpha)
+	ZEND_PARSE_PARAMETERS_END();
+	SURFACE_ARG(zs, 1, surface);
+	int width = plutovg_surface_get_width(surface), height = plutovg_surface_get_height(surface), stride = plutovg_surface_get_stride(surface);
+	if (ZSTR_LEN(alpha) != (size_t) width * (size_t) height) {
+		zend_argument_value_error(2, "must hold width * height bytes (%zu), %zu given", (size_t) width * (size_t) height, ZSTR_LEN(alpha));
+		RETURN_THROWS();
+	}
+	unsigned char *data = plutovg_surface_get_data(surface);
+	const unsigned char *in = (const unsigned char *) ZSTR_VAL(alpha);
+	for (int y = 0; y < height; y++) {
+		uint32_t *row = (uint32_t *) (data + (size_t) y * (size_t) stride);
+		for (int x = 0; x < width; x++) {
+			row[x] = (uint32_t) *in++ << 24;
+		}
+	}
 }
 
 /*
@@ -752,62 +778,65 @@ ZEND_FUNCTION(plutovg_surface_write_to_jpg_stream)
 	RETURN_BOOL(plutovg_surface_write_to_jpg_stream(surface, pv_write, &c, (int) quality));
 }
 
-/* The conversions read and write stride * height bytes; $dst gets a string that size. */
-static bool pv_convert_args(zend_string *src, zend_long width, zend_long height, zend_long stride)
+/*
+ * The conversions read and write stride * height bytes. $src is a string or a trusted address.
+ * $dst is either a variable holding a trusted address (written in place, in C) or anything else
+ * (assigned a new string that size).
+ */
+typedef void (*pv_convert_fn)(unsigned char *, const unsigned char *, int, int, int);
+
+static void pv_convert(INTERNAL_FUNCTION_PARAMETERS, pv_convert_fn fn)
 {
+	zval *zdst;
+	zend_string *src = NULL;
+	zend_long src_addr = 0, width, height, stride;
+	ZEND_PARSE_PARAMETERS_START(5, 5)
+		Z_PARAM_ZVAL(zdst)
+		Z_PARAM_STR_OR_LONG(src, src_addr)
+		Z_PARAM_LONG(width) Z_PARAM_LONG(height) Z_PARAM_LONG(stride)
+	ZEND_PARSE_PARAMETERS_END();
 	if (width < 0 || height < 0 || width > PV_MAX_SIDE || height > PV_MAX_SIDE) {
 		zend_argument_value_error(width < 0 || width > PV_MAX_SIDE ? 3 : 4, "must be between 0 and %d", PV_MAX_SIDE);
-		return false;
+		RETURN_THROWS();
 	}
 	if (stride < width * 4 || (height > 0 && stride > INT_MAX / height)) {
 		zend_argument_value_error(5, "must be at least width * 4 (" ZEND_LONG_FMT ")", width * 4);
-		return false;
+		RETURN_THROWS();
 	}
-	if ((zend_long) ZSTR_LEN(src) < stride * height) {
+	if (src && (zend_long) ZSTR_LEN(src) < stride * height) {
 		zend_argument_value_error(2, "must hold stride * height bytes (" ZEND_LONG_FMT ", %zu given)", stride * height, ZSTR_LEN(src));
-		return false;
+		RETURN_THROWS();
 	}
-	return true;
+	if (!src && src_addr == 0) {
+		zend_argument_value_error(2, "must not be the address 0");
+		RETURN_THROWS();
+	}
+	const unsigned char *in = src ? (const unsigned char *) ZSTR_VAL(src) : (const unsigned char *) (uintptr_t) src_addr;
+	zval *target = Z_ISREF_P(zdst) ? Z_REFVAL_P(zdst) : zdst;
+	if (Z_TYPE_P(target) == IS_LONG) {
+		if (Z_LVAL_P(target) == 0) {
+			zend_argument_value_error(1, "must not be the address 0");
+			RETURN_THROWS();
+		}
+		fn((unsigned char *) (uintptr_t) Z_LVAL_P(target), in, (int) width, (int) height, (int) stride);
+		return;
+	}
+	size_t n = (size_t) (stride * height);
+	zend_string *dst = zend_string_alloc(n, 0);
+	memcpy(ZSTR_VAL(dst), in, n);
+	ZSTR_VAL(dst)[n] = '\0';
+	fn((unsigned char *) ZSTR_VAL(dst), (const unsigned char *) ZSTR_VAL(dst), (int) width, (int) height, (int) stride);
+	ZEND_TRY_ASSIGN_REF_STR(zdst, dst);
 }
 
 ZEND_FUNCTION(plutovg_convert_argb_to_rgba)
 {
-	zval *zdst;
-	zend_string *src;
-	zend_long width, height, stride;
-	ZEND_PARSE_PARAMETERS_START(5, 5)
-		Z_PARAM_ZVAL(zdst)
-		Z_PARAM_STR(src)
-		Z_PARAM_LONG(width) Z_PARAM_LONG(height) Z_PARAM_LONG(stride)
-	ZEND_PARSE_PARAMETERS_END();
-	if (!pv_convert_args(src, width, height, stride)) {
-		RETURN_THROWS();
-	}
-	zend_string *dst = zend_string_alloc(ZSTR_LEN(src), 0);
-	memcpy(ZSTR_VAL(dst), ZSTR_VAL(src), ZSTR_LEN(src));
-	ZSTR_VAL(dst)[ZSTR_LEN(dst)] = '\0';
-	plutovg_convert_argb_to_rgba((unsigned char *) ZSTR_VAL(dst), (const unsigned char *) ZSTR_VAL(src), (int) width, (int) height, (int) stride);
-	ZEND_TRY_ASSIGN_REF_STR(zdst, dst);
+	pv_convert(INTERNAL_FUNCTION_PARAM_PASSTHRU, plutovg_convert_argb_to_rgba);
 }
 
 ZEND_FUNCTION(plutovg_convert_rgba_to_argb)
 {
-	zval *zdst;
-	zend_string *src;
-	zend_long width, height, stride;
-	ZEND_PARSE_PARAMETERS_START(5, 5)
-		Z_PARAM_ZVAL(zdst)
-		Z_PARAM_STR(src)
-		Z_PARAM_LONG(width) Z_PARAM_LONG(height) Z_PARAM_LONG(stride)
-	ZEND_PARSE_PARAMETERS_END();
-	if (!pv_convert_args(src, width, height, stride)) {
-		RETURN_THROWS();
-	}
-	zend_string *dst = zend_string_alloc(ZSTR_LEN(src), 0);
-	memcpy(ZSTR_VAL(dst), ZSTR_VAL(src), ZSTR_LEN(src));
-	ZSTR_VAL(dst)[ZSTR_LEN(dst)] = '\0';
-	plutovg_convert_rgba_to_argb((unsigned char *) ZSTR_VAL(dst), (const unsigned char *) ZSTR_VAL(src), (int) width, (int) height, (int) stride);
-	ZEND_TRY_ASSIGN_REF_STR(zdst, dst);
+	pv_convert(INTERNAL_FUNCTION_PARAM_PASSTHRU, plutovg_convert_rgba_to_argb);
 }
 
 /* ---- paints ---------------------------------------------------------------------------------- */

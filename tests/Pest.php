@@ -9,7 +9,7 @@ if (! extension_loaded('plutovg')) {
 /** Premultiplied ARGB32 pixels of a surface, row by row. */
 function pv_pixels(plutovg_surface $surface): array
 {
-    return array_values(unpack('V*', plutovg_surface_get_data($surface)));
+    return array_values(unpack('V*', plutovg_surface_get_data($surface, true)));
 }
 
 /** A TrueType font on this machine, or null (font tests skip without one). */

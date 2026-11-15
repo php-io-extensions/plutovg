@@ -28,7 +28,7 @@ it('blends a colour through coverage with VelvetGE arithmetic in every byte orde
     $alpha = plutovg_surface_get_alpha($cov);
 
     $mem = plutovg_surface_create($W, $H);
-    [$addr, $stride] = [plutovg_surface_get_data_address($mem), plutovg_surface_get_stride($mem)];
+    [$addr, $stride] = [plutovg_surface_get_data($mem), plutovg_surface_get_stride($mem)];
     $full = plutovg_surface_create($W, $H);
     plutovg_canvas_set_rgba($fc = plutovg_canvas_create($full), 1, 1, 1, 1);
     plutovg_canvas_paint($fc);
@@ -36,7 +36,7 @@ it('blends a colour through coverage with VelvetGE arithmetic in every byte orde
 
     $col = [250, 30, 60, 180];
     $box = plutovg_surface_blend_colour($cov, $addr, $W, $H, $stride, $order, 0, 0, ($col[0] << 24) | ($col[1] << 16) | ($col[2] << 8) | $col[3]);
-    $bytes = plutovg_surface_get_data($mem);
+    $bytes = plutovg_surface_get_data($mem, true);
     for ($y = 0; $y < $H; $y++) {
         for ($x = 0; $x < $W; $x++) {
             $px = substr($bytes, $y * $stride + $x * 4, 4);
@@ -62,8 +62,8 @@ it('samples a ramp by VelvetGE rule and checks its arguments', function () {
         $ramp .= chr($i).chr(255 - $i)."\x00\xff";
     }
     // u = x / 4 across the row: pixel centres 0.125, 0.375, 0.625, 0.875
-    plutovg_surface_blend_ramp($cov, plutovg_surface_get_data_address($mem), 4, 1, 16, PLUTOVG_MEMORY_RGBA, 0, 0, $ramp, false, PLUTOVG_SPREAD_METHOD_PAD, [0.25, 0, 0, 0, 0, 0]);
-    $reds = array_map(fn ($i) => ord(plutovg_surface_get_data($mem)[$i * 4]), range(0, 3));
+    plutovg_surface_blend_ramp($cov, plutovg_surface_get_data($mem), 4, 1, 16, PLUTOVG_MEMORY_RGBA, 0, 0, $ramp, false, PLUTOVG_SPREAD_METHOD_PAD, [0.25, 0, 0, 0, 0, 0]);
+    $reds = array_map(fn ($i) => ord(plutovg_surface_get_data($mem, true)[$i * 4]), range(0, 3));
 
     expect($reds)->toBe(array_map(fn ($t) => (int) floor($t * 255 + 0.5), [0.125, 0.375, 0.625, 0.875]))
         ->and(fn () => plutovg_surface_blend_ramp($cov, 1, 4, 1, 16, 0, 0, 0, 'short', false, 0, [1, 0, 0, 1, 0, 0]))->toThrow(ValueError::class)

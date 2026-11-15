@@ -39,7 +39,7 @@ plutovg_canvas_circle($canvas, 32, 32, 24);
 plutovg_canvas_stroke($canvas);
 
 // Pixels are premultiplied ARGB32 in native byte order.
-printf("%08x\n", unpack('V*', plutovg_surface_get_data($surface))[32 * 64 + 33]); // ff1a66e6
+printf("%08x\n", unpack('V*', plutovg_surface_get_data($surface, true))[32 * 64 + 33]); // ff1a66e6
 plutovg_surface_write_to_png($surface, 'circle.png');
 ```
 
@@ -113,10 +113,10 @@ All 212 of PlutoVG's public functions, under their C names, plus five additions.
 - **Handles** (`plutovg_surface`, `plutovg_canvas`, `plutovg_paint`, `plutovg_path`, `plutovg_font_face`, `plutovg_font_face_cache`) come from the `*_create` and `*_load_*` functions and hold one PlutoVG reference. `*_reference()` returns a second object; `*_destroy()` releases the object you pass. Getters that return a pointer PlutoVG keeps (`plutovg_canvas_get_surface()`, `plutovg_font_face_cache_get()`, …) give an object with its own reference.
 - **Iterators** (`plutovg_path_iterator`, `plutovg_text_iterator`) are objects you `new` and pass to `*_init`; they hold their path or string.
 - **Out-parameters:** C `float *` and arrays PlutoVG fills are PHP references (`plutovg_matrix_map($m, $x, $y, $xx, $yy)`).
-- **Pixels cross as strings.** `plutovg_surface_get_data()` returns a copy. `plutovg_surface_create_for_data()` draws into its own copy of your string, which every canvas, texture and reference built on the surface keeps alive. `plutovg_convert_*` write their result to a reference.
+- **Pixels stay in C unless asked for.** `plutovg_surface_get_data()` returns the address C returns, copying nothing: hand it to the next call as the ticket for the work. `plutovg_surface_get_data($surface, true)` returns a copy as a string, for looking at the pixels. `plutovg_surface_create_for_data()` draws into its own copy of your string, which every canvas, texture and reference built on the surface keeps alive. `plutovg_convert_*` write their result to a reference.
 - **Lengths:** a `-1` length means the whole string (for text: up to the first zero unit inside it).
 - **Callbacks:** `destroy_func`/`closure` pairs are the binding's own (font data is copied and freed with the face); traversal and image-writer functions take a PHP callable in place of the function/closure pair.
-- **Additions:** `plutovg_surface_get_alpha()` returns a surface's alpha plane as packed bytes (for a white fill, its a8 coverage), `plutovg_surface_get_data_address()` returns the address of a surface's pixels, and `plutovg_surface_create_for_address()` makes a surface over memory another extension owns (a pixman image's bits, for example), keeping the owner object you pass alive. `plutovg_surface_blend_colour()` and `plutovg_surface_blend_ramp()` blend a surface's alpha, as coverage, with a straight colour or a 256-entry ramp into straight 32-bit memory in one of four byte orders (`PLUTOVG_MEMORY_RGBA`, `_BGRA`, `_ARGB`, `_ABGR`), with VelvetGE's arithmetic; they return the touched box. The address is trusted, like `create_for_address()`'s.
+- **Additions:** `plutovg_surface_get_alpha()` returns a surface's alpha plane as packed bytes (for a white fill, its a8 coverage), `plutovg_surface_create_for_address()` makes a surface over memory another extension owns (a pixman image's bits, for example), keeping the owner object you pass alive. `plutovg_surface_blend_colour()` and `plutovg_surface_blend_ramp()` blend a surface's alpha, as coverage, with a straight colour or a 256-entry ramp into straight 32-bit memory in one of four byte orders (`PLUTOVG_MEMORY_RGBA`, `_BGRA`, `_ARGB`, `_ABGR`), with VelvetGE's arithmetic; they return the touched box. The address is trusted, like `create_for_address()`'s.
 
 ### Callbacks
 
