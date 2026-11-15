@@ -106,6 +106,14 @@ function plutovg_path_clone_flatten(plutovg_path $path): plutovg_path {}
 /** $dashes: a list of floats. */
 function plutovg_path_clone_dashed(plutovg_path $path, float $offset, array $dashes, int $ndashes): plutovg_path {}
 
+/**
+ * Binding addition: the outline of $path stroked $width wide with $cap, $join and $miter_limit,
+ * as a new closed path to fill (non-zero). Runs PlutoVG's internal stroker (plutovg-ft-stroker.c),
+ * the same one plutovg_canvas_stroke() fills; dashes are not applied (use plutovg_path_clone_dashed
+ * first). Coordinates are kept at PlutoVG's 1/64 px precision. Internal API: may change with PlutoVG.
+ */
+function plutovg_path_stroke_outline(plutovg_path $path, float $width, int $cap, int $join, float $miter_limit): plutovg_path {}
+
 function plutovg_path_extents(plutovg_path $path, ?plutovg_rect $extents, bool $tight): float {}
 
 function plutovg_path_length(plutovg_path $path): float {}

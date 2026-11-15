@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 85b0167a87ae5ef2c23ed0e999f20ee695098d7b */
+ * Stub hash: 8962f9a333781a14a4d929392e1d69289351d810 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_matrix_init, 0, 7, IS_VOID, 0)
 	ZEND_ARG_OBJ_INFO(0, matrix, plutovg_matrix, 0)
@@ -256,6 +256,14 @@ ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_plutovg_path_clone_dashed, 0, 4, 
 	ZEND_ARG_TYPE_INFO(0, ndashes, IS_LONG, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_plutovg_path_stroke_outline, 0, 5, plutovg_path, 0)
+	ZEND_ARG_OBJ_INFO(0, path, plutovg_path, 0)
+	ZEND_ARG_TYPE_INFO(0, width, IS_DOUBLE, 0)
+	ZEND_ARG_TYPE_INFO(0, cap, IS_LONG, 0)
+	ZEND_ARG_TYPE_INFO(0, join, IS_LONG, 0)
+	ZEND_ARG_TYPE_INFO(0, miter_limit, IS_DOUBLE, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_plutovg_path_extents, 0, 3, IS_DOUBLE, 0)
 	ZEND_ARG_OBJ_INFO(0, path, plutovg_path, 0)
 	ZEND_ARG_OBJ_INFO(0, extents, plutovg_rect, 1)
@@ -334,6 +342,7 @@ ZEND_FUNCTION(plutovg_path_traverse_dashed);
 ZEND_FUNCTION(plutovg_path_clone);
 ZEND_FUNCTION(plutovg_path_clone_flatten);
 ZEND_FUNCTION(plutovg_path_clone_dashed);
+ZEND_FUNCTION(plutovg_path_stroke_outline);
 ZEND_FUNCTION(plutovg_path_extents);
 ZEND_FUNCTION(plutovg_path_length);
 ZEND_FUNCTION(plutovg_path_parse);
@@ -389,6 +398,7 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE(plutovg_path_clone, arginfo_plutovg_path_clone)
 	ZEND_FE(plutovg_path_clone_flatten, arginfo_plutovg_path_clone_flatten)
 	ZEND_FE(plutovg_path_clone_dashed, arginfo_plutovg_path_clone_dashed)
+	ZEND_FE(plutovg_path_stroke_outline, arginfo_plutovg_path_stroke_outline)
 	ZEND_FE(plutovg_path_extents, arginfo_plutovg_path_extents)
 	ZEND_FE(plutovg_path_length, arginfo_plutovg_path_length)
 	ZEND_FE(plutovg_path_parse, arginfo_plutovg_path_parse)

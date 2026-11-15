@@ -1,5 +1,6 @@
 # Log
 
+- 2026-11-15: addition `plutovg_path_stroke_outline()`: PlutoVG's internal FreeType-derived stroker (plutovg-ft-stroker.c) run on a path and exported as a new path. Filled, it matches `plutovg_canvas_stroke_path()` pixel for pixel (40 random paths in StrokeOutlineTest). Pest 69 passed on NTS and ZTS; sweep clean.
 - 2026-11-15: `plutovg_surface_get_data()` now returns the address by default; `$copy: true` returns the string copy (not copying is the default).
 - 2026-11-15: `plutovg_surface_get_data()` takes `bool $copy = true`; false returns the pixel address C returns, copying nothing. The `plutovg_surface_get_data_address()` addition is removed (it did the same). Pest 57 passed on NTS and ZTS.
 - 2026-11-13: added plutovg_surface_blend_colour / _ramp and PLUTOVG_MEMORY_* for venusian-pluto's painting brush; BlendTest checks them against VelvetGE's formula.

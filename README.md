@@ -104,7 +104,7 @@ PlutoVG commit => bbd91f0d06a71491691b36330f29dffa4af87ccf
 
 ## API
 
-All 212 of PlutoVG's public functions, under their C names, plus five additions. The full rules are in the [design spec](docs/superpowers/specs/2026-11-13-plutovg-design.md).
+All 212 of PlutoVG's public functions, under their C names, plus seven additions. The full rules are in the [design spec](docs/superpowers/specs/2026-11-13-plutovg-design.md).
 
 ### Translations
 
@@ -116,7 +116,7 @@ All 212 of PlutoVG's public functions, under their C names, plus five additions.
 - **Pixels stay in C unless asked for.** `plutovg_surface_get_data()` returns the address C returns, copying nothing: hand it to the next call as the ticket for the work. `plutovg_surface_get_data($surface, true)` returns a copy as a string, for looking at the pixels. `plutovg_surface_create_for_data()` draws into its own copy of your string, which every canvas, texture and reference built on the surface keeps alive. `plutovg_convert_*` write their result to a reference.
 - **Lengths:** a `-1` length means the whole string (for text: up to the first zero unit inside it).
 - **Callbacks:** `destroy_func`/`closure` pairs are the binding's own (font data is copied and freed with the face); traversal and image-writer functions take a PHP callable in place of the function/closure pair.
-- **Additions:** `plutovg_surface_get_alpha()` returns a surface's alpha plane as packed bytes (for a white fill, its a8 coverage), `plutovg_surface_create_for_address()` makes a surface over memory another extension owns (a pixman image's bits, for example), keeping the owner object you pass alive. `plutovg_surface_blend_colour()` and `plutovg_surface_blend_ramp()` blend a surface's alpha, as coverage, with a straight colour or a 256-entry ramp into straight 32-bit memory in one of four byte orders (`PLUTOVG_MEMORY_RGBA`, `_BGRA`, `_ARGB`, `_ABGR`), with VelvetGE's arithmetic; they return the touched box. The address is trusted, like `create_for_address()`'s.
+- **Additions:** `plutovg_surface_get_alpha()` returns a surface's alpha plane as packed bytes (for a white fill, its a8 coverage), `plutovg_surface_create_for_address()` makes a surface over memory another extension owns (a pixman image's bits, for example), keeping the owner object you pass alive. `plutovg_surface_blend_colour()` and `plutovg_surface_blend_ramp()` blend a surface's alpha, as coverage, with a straight colour or a 256-entry ramp into straight 32-bit memory in one of four byte orders (`PLUTOVG_MEMORY_RGBA`, `_BGRA`, `_ARGB`, `_ABGR`), with VelvetGE's arithmetic; they return the touched box. The address is trusted, like `create_for_address()`'s. `plutovg_surface_put_alpha()` is the inverse of `get_alpha()`. `plutovg_path_stroke_outline($path, $width, $cap, $join, $miter_limit)` returns the outline PlutoVG fills when it strokes, as a new path to fill non-zero: it runs PlutoVG's internal stroker, so filling it gives exactly the pixels `plutovg_canvas_stroke_path()` draws. Dashes are not applied (use `plutovg_path_clone_dashed()` first), points are at PlutoVG's 1/64 px precision, and it relies on PlutoVG internals that an update may change.
 
 ### Callbacks
 

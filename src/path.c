@@ -12,6 +12,7 @@
 #include "php.h"
 #include "zend_exceptions.h"
 #include "runtime.h"
+#include "../lib/plutovg/source/plutovg-ft-stroker.h"
 #include "../stubs/plutovg_path_arginfo.h"
 
 void pv_path_minit(void) { zend_register_functions(NULL, ext_functions, NULL, MODULE_PERSISTENT); }
@@ -789,6 +790,194 @@ ZEND_FUNCTION(plutovg_path_clone_dashed)
 	}
 	pv_path_wrap(plutovg_path_clone_dashed(path, (float) offset, dashes, (int) ndashes), return_value);
 	if (dashes) efree(dashes);
+}
+
+/* ---- binding addition: stroke outline -------------------------------------------------------- */
+
+/* The path in the stroker's outline form, 26.6 fixed point, as plutovg-rasterize.c converts it. */
+static PVG_FT_Outline *pv_ft_outline(const plutovg_path_t *path)
+{
+	int cap = plutovg_path_get_elements(path, NULL) + 8;
+	PVG_FT_Outline *o = emalloc(sizeof(PVG_FT_Outline));
+	o->points = safe_emalloc(cap, sizeof(PVG_FT_Vector), 0);
+	o->tags = emalloc(cap);
+	o->contours = safe_emalloc(cap, sizeof(int), 0);
+	o->contours_flag = emalloc(cap);
+	o->n_points = o->n_contours = o->flags = 0;
+
+	plutovg_path_iterator_t it;
+	plutovg_point_t pt[3];
+	plutovg_path_iterator_init(&it, path);
+#define PV_PT(i, tag) do { o->points[o->n_points].x = (PVG_FT_Pos) roundf(pt[i].x * 64); \
+	o->points[o->n_points].y = (PVG_FT_Pos) roundf(pt[i].y * 64); o->tags[o->n_points] = (tag); o->n_points++; } while (0)
+	while (plutovg_path_iterator_has_next(&it)) {
+		switch (plutovg_path_iterator_next(&it, pt)) {
+		case PLUTOVG_PATH_COMMAND_MOVE_TO:
+			if (o->n_points) { o->contours[o->n_contours++] = o->n_points - 1; }
+			o->contours_flag[o->n_contours] = 1;
+			PV_PT(0, PVG_FT_CURVE_TAG_ON);
+			break;
+		case PLUTOVG_PATH_COMMAND_LINE_TO:
+			PV_PT(0, PVG_FT_CURVE_TAG_ON);
+			break;
+		case PLUTOVG_PATH_COMMAND_CUBIC_TO:
+			PV_PT(0, PVG_FT_CURVE_TAG_CUBIC); PV_PT(1, PVG_FT_CURVE_TAG_CUBIC); PV_PT(2, PVG_FT_CURVE_TAG_ON);
+			break;
+		case PLUTOVG_PATH_COMMAND_CLOSE: {
+			o->contours_flag[o->n_contours] = 0;
+			int start = o->n_contours ? o->contours[o->n_contours - 1] + 1 : 0;
+			if (start != o->n_points) {
+				o->points[o->n_points] = o->points[start];
+				o->tags[o->n_points] = PVG_FT_CURVE_TAG_ON;
+				o->n_points++;
+			}
+			break;
+		}
+		}
+	}
+#undef PV_PT
+	if (o->n_points) { o->contours[o->n_contours++] = o->n_points - 1; }
+	return o;
+}
+
+static void pv_ft_outline_free(PVG_FT_Outline *o)
+{
+	efree(o->points); efree(o->tags); efree(o->contours); efree(o->contours_flag); efree(o);
+}
+
+#define PV_XY(v) ((float) (v).x / 64.0f), ((float) (v).y / 64.0f)
+
+/* One exported contour back into a path: on-curve, conic (quadratic, with implied midpoints) and cubic points. */
+static void pv_ft_contour(plutovg_path_t *out, const PVG_FT_Outline *o, int first, int last)
+{
+	PVG_FT_Vector start = o->points[first];
+	int i = first;
+	if (PVG_FT_CURVE_TAG(o->tags[first]) == PVG_FT_CURVE_TAG_CONIC) {
+		/* contour begins off-curve: start at the last point if on-curve, else the midpoint */
+		PVG_FT_Vector lp = o->points[last];
+		if (PVG_FT_CURVE_TAG(o->tags[last]) == PVG_FT_CURVE_TAG_ON) {
+			start = lp; last--;
+		} else {
+			start.x = (start.x + lp.x) / 2; start.y = (start.y + lp.y) / 2;
+		}
+		i = first - 1;
+	}
+	plutovg_path_move_to(out, PV_XY(start));
+	while (i < last) {
+		i++;
+		PVG_FT_Vector p = o->points[i];
+		int tag = PVG_FT_CURVE_TAG(o->tags[i]);
+		if (tag == PVG_FT_CURVE_TAG_ON) {
+			plutovg_path_line_to(out, PV_XY(p));
+		} else if (tag == PVG_FT_CURVE_TAG_CONIC) {
+			PVG_FT_Vector c = p;
+			for (;;) {
+				PVG_FT_Vector n = (i < last) ? o->points[i + 1] : start;
+				int ntag = (i < last) ? PVG_FT_CURVE_TAG(o->tags[i + 1]) : PVG_FT_CURVE_TAG_ON;
+				if (ntag == PVG_FT_CURVE_TAG_ON) {
+					plutovg_path_quad_to(out, PV_XY(c), PV_XY(n));
+					if (i < last) i++;
+					else i = last + 1;
+					break;
+				}
+				PVG_FT_Vector mid = { (c.x + n.x) / 2, (c.y + n.y) / 2 };
+				plutovg_path_quad_to(out, PV_XY(c), PV_XY(mid));
+				i++;
+				c = n;
+			}
+		} else {
+			/* cubic: two control points, then an on-curve point (or the start) */
+			PVG_FT_Vector c1 = p;
+			PVG_FT_Vector c2 = (i + 1 <= last) ? o->points[i + 1] : start;
+			PVG_FT_Vector e = (i + 2 <= last) ? o->points[i + 2] : start;
+			plutovg_path_cubic_to(out, PV_XY(c1), PV_XY(c2), PV_XY(e));
+			i += 2;
+		}
+	}
+	plutovg_path_close(out);
+}
+
+/* Every point finite and inside the 26.6 range the stroker can hold. */
+static bool pv_path_finite(const plutovg_path_t *path)
+{
+	const plutovg_path_element_t *el;
+	int n = plutovg_path_get_elements(path, &el);
+	for (int i = 0; i < n; i += el[i].header.length) {
+		for (int k = 1; k < el[i].header.length; k++) {
+			float x = el[i + k].point.x, y = el[i + k].point.y;
+			if (!isfinite(x) || !isfinite(y) || fabsf(x) > 1e6f || fabsf(y) > 1e6f) return false;
+		}
+	}
+	return true;
+}
+
+ZEND_FUNCTION(plutovg_path_stroke_outline)
+{
+	zval *zp;
+	double width, miter;
+	zend_long cap, join;
+	ZEND_PARSE_PARAMETERS_START(5, 5)
+		Z_PARAM_OBJECT_OF_CLASS(zp, pv_path_ce)
+		Z_PARAM_DOUBLE(width)
+		Z_PARAM_LONG(cap)
+		Z_PARAM_LONG(join)
+		Z_PARAM_DOUBLE(miter)
+	ZEND_PARSE_PARAMETERS_END();
+	PATH_ARG(zp, 1, path);
+	if (!isfinite(width) || width < 0 || width > 1e6) {
+		zend_argument_value_error(2, "must be a finite width between 0 and 1e6");
+		RETURN_THROWS();
+	}
+	if (cap < PLUTOVG_LINE_CAP_BUTT || cap > PLUTOVG_LINE_CAP_SQUARE) {
+		zend_argument_value_error(3, "must be a PLUTOVG_LINE_CAP_* value");
+		RETURN_THROWS();
+	}
+	if (join < PLUTOVG_LINE_JOIN_MITER || join > PLUTOVG_LINE_JOIN_BEVEL) {
+		zend_argument_value_error(4, "must be a PLUTOVG_LINE_JOIN_* value");
+		RETURN_THROWS();
+	}
+	if (!isfinite(miter) || miter < 0 || miter > 1e6) {
+		zend_argument_value_error(5, "must be a finite miter limit between 0 and 1e6");
+		RETURN_THROWS();
+	}
+	if (!pv_path_finite(path)) {
+		zend_argument_value_error(1, "must hold finite coordinates");
+		RETURN_THROWS();
+	}
+
+	/* Same settings as ft_outline_convert_stroke() with an identity matrix. */
+	PVG_FT_Stroker_LineCap ftcap = cap == PLUTOVG_LINE_CAP_SQUARE ? PVG_FT_STROKER_LINECAP_SQUARE
+		: cap == PLUTOVG_LINE_CAP_ROUND ? PVG_FT_STROKER_LINECAP_ROUND : PVG_FT_STROKER_LINECAP_BUTT;
+	PVG_FT_Stroker_LineJoin ftjoin = join == PLUTOVG_LINE_JOIN_BEVEL ? PVG_FT_STROKER_LINEJOIN_BEVEL
+		: join == PLUTOVG_LINE_JOIN_ROUND ? PVG_FT_STROKER_LINEJOIN_ROUND : PVG_FT_STROKER_LINEJOIN_MITER_FIXED;
+
+	PVG_FT_Outline *in = pv_ft_outline(path);
+	PVG_FT_Stroker stroker;
+	PVG_FT_Stroker_New(&stroker);
+	PVG_FT_Stroker_Set(stroker, (PVG_FT_Fixed) (width * 0.5 * 64), ftcap, ftjoin, (PVG_FT_Fixed) (miter * 65536));
+	PVG_FT_Stroker_ParseOutline(stroker, in);
+
+	PVG_FT_UInt npoints, ncontours;
+	PVG_FT_Stroker_GetCounts(stroker, &npoints, &ncontours);
+	PVG_FT_Outline outl;
+	outl.points = safe_emalloc(npoints + 1, sizeof(PVG_FT_Vector), 0);
+	outl.tags = emalloc(npoints + 1);
+	outl.contours = safe_emalloc(ncontours + 1, sizeof(int), 0);
+	outl.contours_flag = emalloc(ncontours + 1);
+	outl.n_points = outl.n_contours = outl.flags = 0;
+	PVG_FT_Stroker_Export(stroker, &outl);
+	PVG_FT_Stroker_Done(stroker);
+	pv_ft_outline_free(in);
+
+	plutovg_path_t *out = plutovg_path_create();
+	int first = 0;
+	for (int c = 0; c < outl.n_contours; c++) {
+		int last = outl.contours[c];
+		if (last >= first) pv_ft_contour(out, &outl, first, last);
+		first = last + 1;
+	}
+	efree(outl.points); efree(outl.tags); efree(outl.contours); efree(outl.contours_flag);
+	pv_path_wrap(out, return_value);
 }
 
 ZEND_FUNCTION(plutovg_path_extents)
